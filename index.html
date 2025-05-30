@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Dynamic Sudoku App</title>
+        <style>
+            :root {
+                --main-bg: #f8f5ff;
+                --primary: #7e57c2;
+                --accent: #9575cd;
+                --input-bg: #ede7f6;
+                --text: #4a148c;
+            }
+
+            body {
+                background-color: var(--main-bg);
+                font-family: Arial, sans-serif;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                margin-top: 40px;
+            }
+
+            h1 {
+                color: var(--text);
+            }
+
+            #sudoku-grid {
+                display: grid;
+                gap: 2px;
+                margin-top: 20px;
+            }
+
+            input[type="text"] {
+                width: 38px;
+                height: 38px;
+                text-align: center;
+                font-size: 16px;
+                background-color: var(--input-bg);
+                border: 1px solid var(--accent);
+                color: var(--text);
+            }
+
+            input[type="text"]:focus {
+                outline: 2px solid var(--primary);
+            }
+
+            #chances {
+                margin-top: 20px;
+                font-size: 18px;
+                color: var(--primary);
+            }
+
+            .invalid {
+                border: 2px solid red;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Sudoku App</h1>
+        <div id="sudoku-grid"></div>
+        <div id="chances" style="display: none">
+            Chances left: <span id="chance-counter">3</span>
+        </div>
+
+        <script>
+            const url = "http://192.168.129.117:5000";
+            const sendRequest = async(endpoint, method, data, responseType) =>{
+    // Set up the request headers
+                const headers = {
+                    'Content-Type': 'application/json', // Always sending JSON
+                };
+
+                // Prepare the body (JSON format)
+                const body = method === 'POST' || method === 'PUT' ? JSON.stringify(data) : null;
+                try {
+                    
+                    // Send the request
+                    const response = await fetch(url+endpoint, {
+                        method: method,
+                        headers: headers,
+                        body: body
+                    });
+                if(response.ok){
+                    // Handle the response based on the desired responseType
+                    if (responseType === 'json') {
+                        return await response.json(); // Parse as JSON
+                    } else if (responseType === 'text') {
+                        return await response.text(); // Parse as plain text
+                    } else {
+                        return null
+                    }
+                }else{
+                    return null
+                }
+            } catch (error) {
+                return null;
+            }
+                
+            } 
+
+            const grid = document.getElementById("sudoku-grid");
+            const chanceCounter = document.getElementById("chance-counter");
+            const chancesDiv = document.getElementById("chances");
+            let chances = 3;
+
+            window.addEventListener("load", async (e) => {
+                let size = parseInt(prompt("Enter grid size (e.g., 2, 3):"));
+                if (!size || size <= 0 || isNaN(size) || size > 3) {
+                    alert("Invalid size entered. Defaulting to 3.");
+                    size = 3;
+                }
+                const result = await sendRequest("/init_game", 'POST', {size}, "text");
+                if(result != null){
+                    const grid_fetched = JSON.parse(await sendRequest("/get_sudoku", 'GET',{}, "text"));
+                    console.log(grid_fetched);
+                    console.log(size)
+                    grid.style.gridTemplateColumns = `repeat(${size*size}, 40px)`;
+                    grid.style.gridTemplateRows = `repeat(${size*size}, 40px)`;
+                    chancesDiv.style.display = "block";
+                    for (let row = 0; row < (size*size); row++) {
+                        for (let col = 0; col < (size*size); col++) {
+                            const input = document.createElement("input");
+                            input.type = "text";
+                            input.maxLength = 1;
+                            input.className = `box-${row}-${col}`;
+                            if (grid_fetched.board[row][col] == 0){
+                                input.addEventListener("input", async(e) => {
+                                    const value = e.target.value;
+    
+                                // Accept only digits 1-9
+                                    if (!/^[1-9]$/.test(value)) {
+                                        e.target.value = ""; // Clear invalid input
+                                    } else {
+                                        e.target.classList.remove("invalid");
+                                        let move = await sendRequest("/is_valid", "POST", {row, column:col, value:parseInt(value)}, "text");
+                                        if (move == null){
+                                            alert("Wrong move");
+                                            e.target.value = "";
+                                            let remaining_chance = await sendRequest("/check_chance", "GET", {}, "text");
+                                            chances = remaining_chance == null?chances:parseInt(remaining_chance) 
+                                            chancesDiv.innerHTML = `chances: ${chances}`;
+                                            if(chances==0){
+                                                alert('Game Over');
+                                            }
+                                        }else{
+                                            let is_winner = await sendRequest('/check_winner','POST',{},'text')
+                                            if(is_winner==null || is_winner==='False'){
+
+                                            }else{
+                                                alert("You Won!!!!!!!!!!!")
+                                            }
+                                        }
+                                    }
+                               });
+                            }else{
+                                input.value = grid_fetched.board[row][col]
+                                input.disabled = true;
+                            }
+                            grid.appendChild(input);
+                        }
+                    }
+                
+                }
+                else{}
+                // Set grid style dynamically
+            });
+            const disableAllInputs = () => {
+                const inputs = grid.querySelectorAll("input");
+                inputs.forEach((input) => (input.disabled = true));
+            };
+        </script>
+    </body>
+</html>
